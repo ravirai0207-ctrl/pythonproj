@@ -1,132 +1,176 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-Created on Mon Nov 24 14:09:45 2025
-
-@author: raviprakashrai
+Project: Mini Bank
+Dev: Raviprakashrai
 """
 
-# MiniBank One - 100% VITyarthi Compliant Single File Project
 import csv
 import os
 import datetime
 
-# ==================== ACCOUNT CLASS ====================
-class Account:
-    def __init__(self, acc_no, password, name="", initial_bal=0):
-        self.acc_no = str(acc_no)
-        self.password = password
-        self.name = name if name else "Customer"
-        self.filename = f"database/Statement_{self.acc_no}.csv"
-        os.makedirs("database", exist_ok=True)
+# global dict to keep logged in users
+all_users = {}
 
-        if not os.path.exists(self.filename):
-            with open(self.filename, 'a', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(["Timestamp", "Type", "Amount", "Balance", "Description"])
-            self.balance = float(initial_bal)
-            self.log("CREDIT", initial_bal, "Account Created")
-            print(f"Account {acc_no} created for {self.name}")
+class BankUser:
+    def __init__(self, ac_no, u_name, u_pass, start_amt):
+        self.ac_no = str(ac_no)
+        self.u_name = u_name
+        self.u_pass = u_pass
+        self.balance = 0.0
+        
+        # database folder creation
+        if not os.path.exists("db_files"):
+            os.mkdir("db_files")
+            
+        self.path = "db_files/" + self.ac_no + ".csv"
+        
+        # logic to check file
+        if os.path.exists(self.path):
+            # load old balance
+            file = open(self.path, "r")
+            reader = csv.reader(file)
+            rows = []
+            for r in reader:
+                rows.append(r)
+            
+            last = rows[len(rows)-1]
+            self.balance = float(last[3])
+            file.close()
+            print("Hello", self.u_name)
+            print("Your Balance is:", self.balance)
         else:
-            self.balance = self.get_last_balance()
-            print(f"Welcome back {self.name}! Balance: ₹{self.balance:.2f}")
+            # create new
+            self.balance = float(start_amt)
+            file = open(self.path, "w", newline="")
+            writer = csv.writer(file)
+            writer.writerow(["Date", "Type", "Amt", "Bal", "Info"])
+            
+            # save first transaction
+            now = datetime.datetime.now()
+            s_date = now.strftime("%Y-%m-%d")
+            writer.writerow([s_date, "NEW", self.balance, self.balance, "Open"])
+            file.close()
+            print("Account Ready!")
 
-    def log(self, trans_type, amount, desc=""):
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with open(self.filename, 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([timestamp, trans_type, amount, f"{self.balance:.2f}", desc])
+    def write_csv(self, t_type, amt, info):
+        # function to save data
+        file = open(self.path, "a", newline="")
+        writer = csv.writer(file)
+        now = datetime.datetime.now()
+        s_date = now.strftime("%Y-%m-%d")
+        writer.writerow([s_date, t_type, amt, self.balance, info])
+        file.close()
 
-    def get_last_balance(self):
-        try:
-            with open(self.filename, 'r') as f:
-                rows = list(csv.reader(f))
-                return float(rows[-1][3]) if len(rows) > 1 else 0.0
-        except:
-            return 0.0
+    def add_money(self, amt):
+        self.balance = self.balance + amt
+        self.write_csv("CR", amt, "Deposit")
+        print("Money Added:", amt)
+        print("Total:", self.balance)
 
-    def deposit(self, amount):
-        if amount <= 0: print("Invalid amount!"); return
-        self.balance += amount
-        self.log("CREDIT", amount, "Deposit")
-        print(f"Deposited ₹{amount} → Balance: ₹{self.balance:.2f}")
-
-    def withdraw(self, amount):
-        if amount <= 0: print("Invalid amount!"); return
-        if self.balance >= amount:
-            self.balance -= amount
-            self.log("DEBIT", amount, "Withdrawal")
-            print(f"Withdrawn ₹{amount} → Balance: ₹{self.balance:.2f}")
+    def take_money(self, amt):
+        if self.balance >= amt:
+            self.balance = self.balance - amt
+            self.write_csv("DR", amt, "Withdraw")
+            print("Money Taken:", amt)
         else:
-            print("Insufficient Balance!")
+            print("Error: Low Cash")
 
-    def transfer(self, to_acc, amount):
-        if amount <= 0 or self.balance < amount:
-            print("Transfer Failed!")
-            return
-        self.balance -= amount
-        self.log("DEBIT", amount, f"Transfer to {to_acc.acc_no}")
-        to_acc.balance += amount
-        to_acc.log("CREDIT", amount, f"From {self.acc_no}")
-        print(f"TRANSFER SUCCESSFUL! ₹{amount} → {to_acc.name}")
+    def send_money(self, other_acc, amt):
+        # checking if receiver is valid
+        if other_acc in all_users:
+            if self.balance >= amt:
+                # cut from self
+                self.balance = self.balance - amt
+                self.write_csv("DR", amt, "Sent-" + other_acc)
+                
+                # add to other
+                obj = all_users[other_acc]
+                obj.balance = obj.balance + amt
+                obj.write_csv("CR", amt, "From-" + self.ac_no)
+                
+                print("Sent Successfully.")
+            else:
+                print("Failed: No Balance")
+        else:
+            print("Failed: Wrong Account No")
 
-    def show_statement(self):
-        print(f"\n{'='*90}")
-        print(f"STATEMENT → A/c {self.acc_no} | {self.name} | Balance: ₹{self.balance:.2f}")
-        print(f"{'='*90}")
-        try:
-            with open(self.filename, 'r') as f:
-                for line in f.readlines()[1:]:
-                    print(line.strip())
-        except:
-            print("No transactions")
-        print(f"{'='*90}\n")
+    def view_passbook(self):
+        print("****************")
+        print("USER: " + self.u_name)
+        print("****************")
+        if os.path.exists(self.path):
+            f = open(self.path, "r")
+            rr = csv.reader(f)
+            for line in rr:
+                print(line)
+            f.close()
+        else:
+            print("File Missing")
+        print("****************")
 
-# ==================== MAIN PROGRAM ====================
-accounts = {}
+# --- START ---
+program_running = True
 
-print("\n" + "="*70)
-print("           MINIBANK ONE - Secure Banking System")
-print("="*70)
+print("--- BANKING APP ---")
 
-while True:
-    print("\n1. Create Account\n2. Login\n3. Exit")
-    ch = input("Choose: ")
-
-    if ch == "1":
-        no = input("Account No: ")
-        name = input("Name: ")
-        pwd = input("Password: ")
-        bal = float(input("Initial Deposit: "))
-        accounts[no] = Account(no, pwd, name, bal)
-
-    elif ch == "2":
-        no = input("Account No: ")
-        pwd = input("Password: ")
-        if no in accounts and accounts[no].password == pwd:
-            user = accounts[no]
-            print(f"\nWelcome {user.name}!")
-            while True:
-                print(f"\nBalance: ₹{user.balance:.2f}")
-                print("1. Deposit  2. Withdraw  3. Transfer  4. Statement  5. Logout")
-                c = input("Choose: ")
-                if c == "1":
-                    user.deposit(float(input("Amount: ")))
-                elif c == "2":
-                    user.withdraw(float(input("Amount: ")))
-                elif c == "3":
-                    to = input("Receiver A/c: ")
-                    if to in accounts:
-                        user.transfer(accounts[to], float(input("Amount: ")))
+while program_running:
+    print("")
+    print("1 -> Create Account")
+    print("2 -> Login")
+    print("3 -> Close App")
+    
+    opt = input("Choice: ")
+    
+    if opt == "1":
+        # registration
+        a = input("Enter Acc No: ")
+        n = input("Enter Name: ")
+        p = input("Enter Pass: ")
+        b = float(input("Enter Balance: "))
+        
+        u = BankUser(a, n, p, b)
+        all_users[a] = u
+        
+    elif opt == "2":
+        # login logic
+        a = input("Acc No: ")
+        p = input("Pass: ")
+        
+        if a in all_users:
+            curr = all_users[a]
+            if curr.u_pass == p:
+                print("Login OK")
+                
+                logged_in = True
+                while logged_in:
+                    print("")
+                    print("1.Deposit 2.Withdraw 3.Transfer 4.History 5.Logout")
+                    x = input("Do: ")
+                    
+                    if x == "1":
+                        m = float(input("Amt: "))
+                        curr.add_money(m)
+                    elif x == "2":
+                        m = float(input("Amt: "))
+                        curr.take_money(m)
+                    elif x == "3":
+                        acc = input("To Acc: ")
+                        m = float(input("Amt: "))
+                        curr.send_money(acc, m)
+                    elif x == "4":
+                        curr.view_passbook()
+                    elif x == "5":
+                        logged_in = False
+                        print("Logged Out.")
                     else:
-                        print("Account not found!")
-                elif c == "4":
-                    user.show_statement()
-                elif c == "5":
-                    break
+                        print("Try Again")
+            else:
+                print("Wrong Pass")
         else:
-            print("Wrong credentials!")
-
-    elif ch == "3":
-        print("Thank You!")
-        break
+            print("No Account Found")
+            
+    elif opt == "3":
+        program_running = False
+        print("Bye Bye")
+    
+    else:
+        print("Wrong Input")
